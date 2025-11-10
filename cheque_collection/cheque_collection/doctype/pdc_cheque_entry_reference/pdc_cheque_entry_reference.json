@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-11-05 20:06:13.265683",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "party",
+  "column_break_fpak",
+  "total_paid",
+  "column_break_mzra",
+  "remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "party",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Party",
+   "options": "Customer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_fpak",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_paid",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Paid Amount",
+   "options": "Currency",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_mzra",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Remarks"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-11-07 14:50:38.369349",
+ "modified_by": "Administrator",
+ "module": "Cheque Collection",
+ "name": "PDC Cheque Entry Reference",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
