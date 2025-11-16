@@ -24,6 +24,7 @@ fixtures = [
     }
 ]
 
+doctype_js = {"Payment Entry" : "public/js/payment_entry.js"}
 doctype_list_js = {"PDC Cheque" : "public/js/pdc_chequelist.js"}
 # required_apps = []
 
