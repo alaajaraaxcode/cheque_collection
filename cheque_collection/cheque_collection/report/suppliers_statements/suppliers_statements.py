@@ -1,3 +1,4 @@
+# suppliers_statements.py
 # Copyright (c) 2025, xcode and contributors
 # For license information, please see license.txt
 
@@ -6,148 +7,250 @@ from frappe.utils import flt
 
 
 def execute(filters=None):
-	filters = frappe._dict(filters or {})
-	columns = get_columns()
+    filters = frappe._dict(filters or {})
+    columns = get_columns()
 
-	invoices = get_invoices(filters)
+    invoices = get_invoices(filters)
+    payments = get_payment_entries(filters)
 
-	data = []
+    data = []
 
-	if not invoices:
-		return columns, data
+    # If nothing found at all, just return empty
+    if not invoices and not payments:
+        return columns, data
 
-	# group by supplier
-	by_supplier = {}
-	for inv in invoices:
-		by_supplier.setdefault(inv["supplier"], []).append(inv)
+    # Combine data per supplier
+    by_supplier = {}
 
-	for supplier, rows in by_supplier.items():
-		supplier_name = rows[0].get("supplier_name") or supplier
+    # --- Invoices as DEBIT entries ---
+    for inv in invoices:
+        supplier = inv["supplier"]
+        by_supplier.setdefault(supplier, [])
+        by_supplier[supplier].append({
+            "entry_type": "Invoice",
+            "posting_date": inv["posting_date"],
+            "name": inv["name"],
+            "bill_no": inv.get("bill_no"),
+            "debit": flt(inv.get("grand_total")),
+            "credit": 0.0,
+            "supplier": supplier,
+            "supplier_name": inv.get("supplier_name"),
+        })
 
-		# Supplier header row
-		data.append({
-			"supplier": supplier,
-			"ref_inv": f"{supplier_name}",
-			"bold": 1,
-		})
+    # --- PDC Payment Entries as CREDIT entries ---
+    for pe in payments:
+        supplier = pe["supplier"]
+        by_supplier.setdefault(supplier, [])
+        by_supplier[supplier].append({
+            "entry_type": "Payment",
+            "posting_date": pe["posting_date"],
+            "name": pe["name"],
+            "bill_no": pe.get("reference_no") or pe.get("reference_date"),
+            "debit": 0.0,
+            "credit": flt(pe.get("paid_amount")),
+            "supplier": supplier,
+            "supplier_name": pe.get("supplier_name"),
+        })
 
-		running = 0.0
-		sum_amount = 0.0
-		sum_outstanding = 0.0
+    # --- Build statement per supplier ---
+    for supplier, rows in by_supplier.items():
+        # Sort by date, then type, then name
+        rows.sort(key=lambda d: (d["posting_date"], d["entry_type"], d["name"]))
 
-		for inv in rows:
-			amount = flt(inv.get("grand_total"))
-			outstanding = flt(inv.get("outstanding_amount"))
-			running += outstanding
-			sum_amount += amount
-			sum_outstanding += outstanding
+        supplier_name = rows[0].get("supplier_name") or supplier
 
-			data.append({
-				"date": inv.get("posting_date"),
-				"ref_inv": f"INV:{inv.get('name')}",
-				"bill_no": inv.get("bill_no"),
-				"amount": amount,
-				"balance": outstanding,
-				"cum_balance": running,
-			})
+        # Supplier header row
+        data.append({
+            "supplier": supplier,
+            "ref_inv": supplier_name,
+            "bold": 1,
+        })
 
-		# Subtotal row for this supplier
-		data.append({
-			"ref_inv": "Total",
-			"amount": sum_amount,
-			"balance": sum_outstanding,
-			"cum_balance": running,
-			"bold": 1,
-		})
+        running = 0.0
+        sum_debit = 0.0
+        sum_credit = 0.0
 
-		# PDC Amounts row
-		pdc_amt = get_pdc_amount(supplier, filters)
-		if pdc_amt:
-			data.append({
-				"ref_inv": "PDC Amounts",
-				"balance": pdc_amt,
-				"cum_balance": sum_outstanding + pdc_amt,
-				"indent": 1,
-				"bold": 1,
-			})
+        for row in rows:
+            debit = flt(row["debit"])
+            credit = flt(row["credit"])
+            running += debit - credit
+            sum_debit += debit
+            sum_credit += credit
 
-	return columns, data
+            if row["entry_type"] == "Invoice":
+                ref = f"INV: {row['name']}"
+            else:
+                ref = f"PDC: {row['name']}"
+
+            data.append({
+                "supplier": supplier,
+                "date": row["posting_date"],
+                "ref_inv": ref,
+                "bill_no": row.get("bill_no"),
+                "debit": debit,
+                "credit": credit,
+                "balance": running,
+            })
+
+        # TOTAL row
+        data.append({
+            "ref_inv": "Total",
+            "debit": sum_debit,
+            "credit": sum_credit,
+            "balance": running,
+            "bold": 1,
+        })
+
+        # NEW: PDC subtotal row under Total
+        # Here all credits in this report are PDC payments (mode_of_payment='PDC', custom_deposit='No')
+        data.append({
+            "ref_inv": "PDC",
+            "credit": sum_credit,
+            "bold": 1,
+            "indent": 1,
+        })
+
+    return columns, data
 
 
 def get_columns():
-	return [
-		{"label": "Supplier", "fieldname": "supplier", "fieldtype": "Link", "options": "Supplier", "width": 150},
-		{"label": "Date", "fieldname": "date", "fieldtype": "Date", "width": 110},
-		{"label": "Ref.No. INV #", "fieldname": "ref_inv", "fieldtype": "Data", "width": 220},
-		{"label": "Bill No", "fieldname": "bill_no", "fieldtype": "Data", "width": 150},
-		{"label": "Amount", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
-		{"label": "Balance", "fieldname": "balance", "fieldtype": "Currency", "width": 120},
-		{"label": "Cum.Balance", "fieldname": "cum_balance", "fieldtype": "Currency", "width": 130},
-	]
+    return [
+        {
+            "label": "Supplier",
+            "fieldname": "supplier",
+            "fieldtype": "Link",
+            "options": "Supplier",
+            "width": 150,
+        },
+        {
+            "label": "Date",
+            "fieldname": "date",
+            "fieldtype": "Date",
+            "width": 110,
+        },
+        {
+            "label": "Reference",
+            "fieldname": "ref_inv",
+            "fieldtype": "Data",
+            "width": 220,
+        },
+        {
+            "label": "Bill No / Ref",
+            "fieldname": "bill_no",
+            "fieldtype": "Data",
+            "width": 150,
+        },
+        {
+            "label": "Debit",
+            "fieldname": "debit",
+            "fieldtype": "Currency",
+            "width": 120,
+        },
+        {
+            "label": "Credit",
+            "fieldname": "credit",
+            "fieldtype": "Currency",
+            "width": 120,
+        },
+        {
+            "label": "Balance",
+            "fieldname": "balance",
+            "fieldtype": "Currency",
+            "width": 130,
+        },
+    ]
 
 
 def get_invoices(filters):
-	conditions = ["pi.docstatus = 1", "pi.outstanding_amount > 0"]
-	values = {}
+    """Get Purchase Invoices (debit side)."""
+    conditions = ["pi.docstatus = 1"]
+    values = {}
 
-	if filters.get("company"):
-		conditions.append("pi.company = %(company)s")
-		values["company"] = filters.company
-	if filters.get("from_date"):
-		conditions.append("pi.posting_date >= %(from_date)s")
-		values["from_date"] = filters.from_date
-	if filters.get("to_date"):
-		conditions.append("pi.posting_date <= %(to_date)s")
-		values["to_date"] = filters.to_date
-	if filters.get("supplier"):
-		conditions.append("pi.supplier = %(supplier)s")
-		values["supplier"] = filters.supplier
-	elif filters.get("supplier_group"):
-		conditions.append("s.supplier_group = %(supplier_group)s")
-		values["supplier_group"] = filters.supplier_group
+    if filters.get("company"):
+        conditions.append("pi.company = %(company)s")
+        values["company"] = filters.company
 
-	query = f"""
-		select
-			pi.posting_date, pi.name, pi.bill_no, pi.grand_total, pi.outstanding_amount,
-			pi.supplier, s.supplier_name
-		from `tabPurchase Invoice` pi
-		left join `tabSupplier` s on s.name = pi.supplier
-		where {' and '.join(conditions)}
-		order by pi.supplier, pi.posting_date, pi.name
-	"""
+    if filters.get("from_date"):
+        conditions.append("pi.posting_date >= %(from_date)s")
+        values["from_date"] = filters.from_date
 
-	res = frappe.db.sql(query, values, as_dict=True)
-	return res
+    if filters.get("to_date"):
+        conditions.append("pi.posting_date <= %(to_date)s")
+        values["to_date"] = filters.to_date
+
+    if filters.get("supplier"):
+        conditions.append("pi.supplier = %(supplier)s")
+        values["supplier"] = filters.supplier
+    elif filters.get("supplier_group"):
+        conditions.append("s.supplier_group = %(supplier_group)s")
+        values["supplier_group"] = filters.supplier_group
+
+    query = f"""
+        select
+            pi.posting_date,
+            pi.name,
+            pi.bill_no,
+            pi.grand_total,
+            pi.outstanding_amount,
+            pi.supplier,
+            s.supplier_name
+        from `tabPurchase Invoice` pi
+        left join `tabSupplier` s on s.name = pi.supplier
+        where {' and '.join(conditions)}
+        order by pi.supplier, pi.posting_date, pi.name
+    """
+
+    return frappe.db.sql(query, values, as_dict=True)
 
 
-def get_pdc_amount(supplier: str, filters):
-	values = {"supplier": supplier}
-	conditions = [
-		"pe.docstatus = 1",
-		"pe.payment_type = 'Pay'",
-		"pe.party_type = 'Supplier'",
-		"pe.party = %(supplier)s",
-		"pe.mode_of_payment = 'PDC'",
-		"(pe.custom_deposit = 'No' or pe.custom_deposit is null or pe.custom_deposit = '')",
-	]
+def get_payment_entries(filters):
+    """
+    Get PDC Payment Entries (credit side):
+    - party_type = Supplier
+    - mode_of_payment = 'PDC'
+    - custom_deposit = 'No'
+    """
+    values = {}
+    conditions = [
+        "pe.docstatus = 1",
+        "pe.payment_type = 'Pay'",
+        "pe.party_type = 'Supplier'",
+        "pe.mode_of_payment = 'PDC'",
+        "pe.custom_deposit = 'No'",
+    ]
 
-	if filters.get("company"):
-		conditions.append("pe.company = %(company)s")
-		values["company"] = filters.company
-	if filters.get("from_date"):
-		conditions.append("pe.posting_date >= %(from_date)s")
-		values["from_date"] = filters.from_date
-	if filters.get("to_date"):
-		conditions.append("pe.posting_date <= %(to_date)s")
-		values["to_date"] = filters.to_date
+    if filters.get("company"):
+        conditions.append("pe.company = %(company)s")
+        values["company"] = filters.company
 
-	amt = frappe.db.sql(
-		f"""
-		select coalesce(sum(ifnull(pe.paid_amount, 0)), 0)
-		from `tabPayment Entry` pe
-		where {' and '.join(conditions)}
-		""",
-		values,
-	)[0][0]
+    if filters.get("from_date"):
+        conditions.append("pe.posting_date >= %(from_date)s")
+        values["from_date"] = filters.from_date
 
-	return flt(amt)
+    if filters.get("to_date"):
+        conditions.append("pe.posting_date <= %(to_date)s")
+        values["to_date"] = filters.to_date
+
+    if filters.get("supplier"):
+        conditions.append("pe.party = %(supplier)s")
+        values["supplier"] = filters.supplier
+    elif filters.get("supplier_group"):
+        conditions.append("s.supplier_group = %(supplier_group)s")
+        values["supplier_group"] = filters.supplier_group
+
+    query = f"""
+        select
+            pe.posting_date,
+            pe.name,
+            pe.paid_amount,
+            pe.party as supplier,
+            s.supplier_name,
+            pe.reference_no,
+            pe.reference_date
+        from `tabPayment Entry` pe
+        left join `tabSupplier` s on s.name = pe.party
+        where {' and '.join(conditions)}
+        order by pe.party, pe.posting_date, pe.name
+    """
+
+    return frappe.db.sql(query, values, as_dict=True)
