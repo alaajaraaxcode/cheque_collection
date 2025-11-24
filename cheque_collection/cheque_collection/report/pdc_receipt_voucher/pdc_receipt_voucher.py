@@ -38,6 +38,7 @@ def execute(filters=None):
 		"""
 		select
 			inv.parent as pdc_name,
+			inv.customer,
 			inv.customer_name,
 			inv.reference_name as invoice_no,
 			inv.grand_total,
@@ -72,10 +73,11 @@ def execute(filters=None):
 		rows = by_cheque.get(cname, [])
 		total = 0.0
 		for r in rows:
-			amt = r.get("grand_total") or 0.0
+			amt = r.get("paid_amount") or 0.0
 			total += amt
 			data.append(
 				{
+					"customer": r.get("customer"),
 					"customer_name": r.get("customer_name"),
 					"invoice_no": r.get('invoice_no'),
 					"amount": amt,
@@ -102,6 +104,7 @@ def get_columns():
 		{"label": "Cheque No", "fieldname": "reference_no", "fieldtype": "Data", "width": 140},
 		{"label": "Cheque Date", "fieldname": "reference_date", "fieldtype": "Datetime", "width": 150},
 		{"label": "Posting Date", "fieldname": "posting_date", "fieldtype": "Datetime", "width": 150},
+		{"label": "Customer", "fieldname": "customer", "fieldtype": "Link", "options": "Customer", "width": 150},
 		{"label": "Customer Name", "fieldname": "customer_name", "fieldtype": "Data", "width": 220},
 		{"label": "Invoice No.", "fieldname": "invoice_no", "fieldtype": "Data", "width": 140},
 		{"label": "Amount", "fieldname": "amount", "fieldtype": "Currency", "width": 120},

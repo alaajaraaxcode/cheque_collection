@@ -15,6 +15,7 @@
   "reconcelled",
   "company",
   "journal_entry",
+  "payment_entry",
   "amount",
   "reference_no",
   "reference_date",
@@ -147,13 +148,19 @@
    "in_standard_filter": 1,
    "label": "Reconcelled",
    "read_only": 1
+  },
+  {
+   "fieldname": "payment_entry",
+   "fieldtype": "Data",
+   "label": "Payment Entry",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-11-20 22:11:01.574673",
+ "modified": "2025-11-24 02:26:42.788861",
  "modified_by": "Administrator",
  "module": "Cheque Collection",
  "name": "PDC Cheque",

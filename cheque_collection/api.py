@@ -3,7 +3,7 @@ import frappe
 from frappe import _
 
 @frappe.whitelist()
-def create_journal_entry(payment_entry_name: str, bank_account: str) -> str:
+def create_journal_entry(payment_entry_name: str, bank_account: str, posting_date: str = None) -> str:
     """
     Create a Journal Entry to move funds from the PDC account to the selected Bank account for a 'Pay' Payment Entry.
 
@@ -17,6 +17,9 @@ def create_journal_entry(payment_entry_name: str, bank_account: str) -> str:
 
     if not bank_account:
         frappe.throw("Please select a Bank account")
+    
+    if not posting_date:
+        frappe.throw("Please select a Posting date")
 
     doc = frappe.get_doc("Payment Entry", payment_entry_name)
 
@@ -70,7 +73,7 @@ def create_journal_entry(payment_entry_name: str, bank_account: str) -> str:
     je = frappe.new_doc("Journal Entry")
     je.voucher_type = "Bank Entry"
     je.company = doc.company
-    je.posting_date = doc.posting_date or frappe.utils.nowdate()
+    je.posting_date = posting_date
     je.cheque_no = doc.reference_no
     je.cheque_date = doc.reference_date
     je.user_remark = _("PDC to Bank for Payment Entry {0}").format(doc.name)
@@ -98,7 +101,11 @@ def create_journal_entry(payment_entry_name: str, bank_account: str) -> str:
 
     # Link back on the Payment Entry
     frappe.db.set_value("Payment Entry", doc.name, "custom_journal_entry", je.name)
-
+    
+    # Set custom_deposit to Yes
+    frappe.db.set_value("Payment Entry", doc.name, "custom_deposit", "Yes")
+    
+    frappe.db.commit()
     return je.name
 
 
@@ -130,5 +137,9 @@ def cancel_journal_entry(payment_entry_name: str) -> str:
 
     # Clear link on Payment Entry
     frappe.db.set_value("Payment Entry", doc.name, "custom_journal_entry", None)
-
+    
+    # Set custom_deposit to No
+    frappe.db.set_value("Payment Entry", doc.name, "custom_deposit", "No")
+    
+    frappe.db.commit()
     return je_name

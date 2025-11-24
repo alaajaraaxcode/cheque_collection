@@ -67,9 +67,16 @@ class PDCCheque(Document):
         """Create single Payment Entry for each customer, with multiple invoice references."""
         customer_invoices_map = self.get_customer_invoices_map()
 
+        payment_entries = []
         # Iterate over each customer and create a single Payment Entry for multiple invoices
         for customer, invoices in customer_invoices_map.items():
-            self.create_payment_entry_for_customer(customer, invoices)
+            pe_name = self.create_payment_entry_for_customer(customer, invoices)
+            if pe_name:
+                payment_entries.append(pe_name)
+        
+        # Link all created Payment Entries back to PDC Cheque
+        if payment_entries:
+            frappe.db.set_value("PDC Cheque", self.name, "payment_entry", ", ".join(payment_entries))
 
     def get_customer_invoices_map(self):
         """Create a mapping of customers to their respective invoices."""
@@ -148,6 +155,9 @@ class PDCCheque(Document):
                 "allocated_amount": allocated_amount
             })
 
+        # Link the PDC Cheque to the Payment Entry
+        pe.custom_pdc_cheque = self.name
+
         # Insert and submit the Payment Entry
         pe.insert()
         pe.submit()
@@ -158,6 +168,8 @@ class PDCCheque(Document):
                 frappe.format_value(paid_amount, "Currency")
             )
         )
+        
+        return pe.name
 
 
     def get_reference_row_for_customer(self, customer):
@@ -169,7 +181,7 @@ class PDCCheque(Document):
 
 
 @frappe.whitelist()
-def create_journal_entry(pdc_cheque_name: str, bank_account: str) -> str:
+def create_journal_entry(pdc_cheque_name: str, bank_account: str, posting_date: str = None) -> str:
     """
     Create a Journal Entry to move funds from the PDC account to the selected Bank account.
 
@@ -183,6 +195,9 @@ def create_journal_entry(pdc_cheque_name: str, bank_account: str) -> str:
 
     if not bank_account:
         frappe.throw("Please select a Bank account")
+    
+    if not posting_date:
+        frappe.throw("Please select a Posting date")
 
     doc = frappe.get_doc("PDC Cheque", pdc_cheque_name)
 
@@ -242,7 +257,7 @@ def create_journal_entry(pdc_cheque_name: str, bank_account: str) -> str:
     je = frappe.new_doc("Journal Entry")
     je.voucher_type = "Bank Entry"
     je.company = doc.company
-    je.posting_date = doc.posting_date or frappe.utils.nowdate()
+    je.posting_date = posting_date
     # Reference details are mandatory for Bank Entry
     je.cheque_no = getattr(doc, "reference_no", None)
     je.cheque_date = getattr(doc, "reference_date", None)
@@ -271,7 +286,18 @@ def create_journal_entry(pdc_cheque_name: str, bank_account: str) -> str:
 
     # Link back on the PDC Cheque
     frappe.db.set_value("PDC Cheque", doc.name, "journal_entry", je.name)
+    
+    # Set reconcelled field to checked
+    frappe.db.set_value("PDC Cheque", doc.name, "reconcelled", 1)
 
+    # Update custom_deposit field on linked Payment Entries to "Yes"
+    if getattr(doc, "payment_entry", None):
+        payment_entries = [pe.strip() for pe in doc.payment_entry.split(",")]
+        for pe_name in payment_entries:
+            if pe_name:
+                frappe.db.set_value("Payment Entry", pe_name, "custom_deposit", "Yes")
+    
+    frappe.db.commit()
     return je.name
 
 
@@ -303,5 +329,16 @@ def cancel_journal_entry(pdc_cheque_name: str) -> str:
 
     # Clear link on PDC Cheque
     frappe.db.set_value("PDC Cheque", doc.name, "journal_entry", None)
+    
+    # Uncheck reconcelled field
+    frappe.db.set_value("PDC Cheque", doc.name, "reconcelled", 0)
 
+    # Update custom_deposit field on linked Payment Entries to "No"
+    if getattr(doc, "payment_entry", None):
+        payment_entries = [pe.strip() for pe in doc.payment_entry.split(",")]
+        for pe_name in payment_entries:
+            if pe_name:
+                frappe.db.set_value("Payment Entry", pe_name, "custom_deposit", "No")
+    
+    frappe.db.commit()
     return je_name

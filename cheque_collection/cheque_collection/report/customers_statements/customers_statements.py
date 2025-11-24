@@ -55,6 +55,7 @@ def execute(filters=None):
 
 		# Customer header row
 		data.append({
+			"customer": customer,
 			"ref_inv": f"{customer_name}",
 			"bold": 1,
 		})
@@ -119,6 +120,7 @@ def execute(filters=None):
 
 def get_columns():
 	return [
+		{"label": "Customer", "fieldname": "customer", "fieldtype": "Link", "options": "Customer", "width": 150},
 		{"label": "Date", "fieldname": "date", "fieldtype": "Date", "width": 110},
 		{"label": "Ref.No. INV #", "fieldname": "ref_inv", "fieldtype": "Data", "width": 220},
 		{"label": "PO", "fieldname": "po_no", "fieldtype": "Data", "width": 150},
@@ -166,12 +168,11 @@ def get_invoices(filters):
 	# cprint("Invoices Count", len(res), color="GREEN")
 
 	# If nothing came back, try to probe without outstanding filter and print counts
-	if not res:
-		probe_conditions = [c for c in conditions if "outstanding_amount" not in c]
-		probe_query = query.replace(" where " + " and ".join(conditions), " where " + " and ".join(probe_conditions))
-		probe = frappe.db.sql(probe_query, values, as_dict=True)
-		# cprint("Probe Without Outstanding Filter", len(probe), color="RED")
-		# Do not return probe; just logging
+	# if not res:
+	# 	probe_conditions = [c for c in conditions if "outstanding_amount" not in c]
+	# 	probe_query = query.replace(" where " + " and ".join(conditions), " where " + " and ".join(probe_conditions))
+	# 	probe = frappe.db.sql(probe_query, values, as_dict=True)
+
 
 	return res
 
@@ -184,6 +185,7 @@ def get_pdc_amount(customer: str, filters):
 		"pe.party_type = 'Customer'",
 		"pe.party = %(customer)s",
 		"pe.mode_of_payment = 'PDC'",
+		"(pe.custom_deposit = 'No' or pe.custom_deposit is null or pe.custom_deposit = '')",
 	]
 
 	if filters.get("company"):

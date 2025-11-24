@@ -62,6 +62,13 @@ function createJournalEntry(frm) {
                         reqd: 1
                     },
                     {
+                        fieldname: 'posting_date',
+                        fieldtype: 'Date',
+                        label: __('Posting Date'),
+                        default: frappe.datetime.get_today(),
+                        reqd: 1
+                    },
+                    {
                         fieldname: 'amount',
                         fieldtype: 'Currency',
                         label: __('Amount'),
@@ -75,13 +82,18 @@ function createJournalEntry(frm) {
                         frappe.msgprint(__('Please select a bank account.'));
                         return;
                     }
+                    if (!values.posting_date) {
+                        frappe.msgprint(__('Please select a posting date.'));
+                        return;
+                    }
 
                     d.hide();
                     frappe.call({
                         method: 'cheque_collection.api.create_journal_entry',
                         args: {
                             payment_entry_name: frm.doc.name,
-                            bank_account: values.bank_account
+                            bank_account: values.bank_account,
+                            posting_date: values.posting_date
                         },
                         freeze: true,
                         freeze_message: __('Creating Journal Entry...'),
