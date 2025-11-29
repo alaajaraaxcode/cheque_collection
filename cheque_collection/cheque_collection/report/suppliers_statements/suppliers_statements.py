@@ -69,28 +69,35 @@ def execute(filters=None):
         running = 0.0
         sum_debit = 0.0
         sum_credit = 0.0
+        sum_pdc_credit = 0.0
+        pdc_running = 0.0
 
         for row in rows:
             debit = flt(row["debit"])
             credit = flt(row["credit"])
-            running += debit - credit
-            sum_debit += debit
-            sum_credit += credit
+
 
             if row["entry_type"] == "Invoice":
+                running += debit - credit
+                sum_debit += debit
+                sum_credit += credit
                 ref = f"INV: {row['name']}"
+                data.append({
+                    "supplier": supplier,
+                    "date": row["posting_date"],
+                    "ref_inv": ref,
+                    "bill_no": row.get("bill_no"),
+                    "debit": debit,
+                    "credit": credit,
+                    "balance": running,
+                })
             else:
-                ref = f"PDC: {row['name']}"
+                # ref = f"PDC: {row['name']}"
+                # date = row["posting_date"]
+                sum_pdc_credit += credit
+                pdc_running += running - credit
 
-            data.append({
-                "supplier": supplier,
-                "date": row["posting_date"],
-                "ref_inv": ref,
-                "bill_no": row.get("bill_no"),
-                "debit": debit,
-                "credit": credit,
-                "balance": running,
-            })
+
 
         # TOTAL row
         data.append({
@@ -105,7 +112,8 @@ def execute(filters=None):
         # Here all credits in this report are PDC payments (mode_of_payment='PDC', custom_deposit='No')
         data.append({
             "ref_inv": "PDC",
-            "credit": sum_credit,
+            "credit": sum_pdc_credit,
+            "balance": pdc_running,
             "bold": 1,
             "indent": 1,
         })
