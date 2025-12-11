@@ -9,9 +9,9 @@
  "hide_custom": 0,
  "icon": "color-review-points",
  "idx": 0,
- "indicator_color": "green",
+ "indicator_color": "",
  "is_hidden": 0,
- "label": "PDC Cheque_ Collection",
+ "label": "PDC Cheque Collection",
  "links": [
   {
    "hidden": 0,
@@ -68,10 +68,10 @@
    "type": "Link"
   }
  ],
- "modified": "2025-11-24 04:57:00.709655",
+ "modified": "2025-12-09 21:49:24.948272",
  "modified_by": "Administrator",
  "module": "Cheque Collection",
- "name": "PDC Cheque_ Collection",
+ "name": "PDC Cheque Collection",
  "number_cards": [],
  "owner": "Administrator",
  "parent_page": "",
@@ -121,5 +121,5 @@
    "type": "Report"
   }
  ],
- "title": "PDC Cheque_ Collection"
+ "title": "PDC Cheque Collection"
 }

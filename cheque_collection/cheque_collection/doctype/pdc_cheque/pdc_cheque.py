@@ -303,9 +303,9 @@ def create_journal_entry(pdc_cheque_name: str, bank_account: str, posting_date: 
 
 @frappe.whitelist()
 def cancel_journal_entry(pdc_cheque_name: str) -> str:
-    """Cancel the Journal Entry linked to this PDC Cheque and clear the link.
+    """Create a reverse Journal Entry to undo the original PDC to Bank movement.
 
-    Returns the Journal Entry name affected.
+    Returns the reverse Journal Entry name created.
     """
     if not pdc_cheque_name:
         frappe.throw("Missing PDC Cheque name")
@@ -319,15 +319,35 @@ def cancel_journal_entry(pdc_cheque_name: str) -> str:
         frappe.throw("No Journal Entry is linked to this PDC Cheque")
 
     je_name = doc.journal_entry
-    je = frappe.get_doc("Journal Entry", je_name)
+    original_je = frappe.get_doc("Journal Entry", je_name)
 
-    if je.docstatus == 1:
-        je.cancel()
-    elif je.docstatus == 0:
-        je.delete()
-    # if already cancelled (2) -> nothing to do
+    if original_je.docstatus != 1:
+        frappe.throw(_("The linked Journal Entry {0} is not submitted. Cannot create reverse entry.").format(je_name))
 
-    # Clear link on PDC Cheque
+    # Create reverse Journal Entry
+    reverse_je = frappe.new_doc("Journal Entry")
+    reverse_je.voucher_type = "Bank Entry"
+    reverse_je.company = original_je.company
+    reverse_je.posting_date = frappe.utils.today()
+    reverse_je.cheque_no = getattr(doc, "reference_no", None)
+    reverse_je.cheque_date = getattr(doc, "reference_date", None)
+    reverse_je.user_remark = _("Reverse Entry for PDC Return {0} - Original JE: {1}").format(doc.name, je_name)
+
+    # Reverse the accounts - swap debit and credit
+    for account_row in original_je.accounts:
+        reverse_je.append(
+            "accounts",
+            {
+                "account": account_row.account,
+                "debit_in_account_currency": account_row.credit_in_account_currency or 0,
+                "credit_in_account_currency": account_row.debit_in_account_currency or 0,
+            },
+        )
+
+    reverse_je.insert()
+    reverse_je.submit()
+
+    # Clear the journal_entry link on PDC Cheque (original JE remains in system)
     frappe.db.set_value("PDC Cheque", doc.name, "journal_entry", None)
     
     # Uncheck reconcelled field
@@ -341,4 +361,7 @@ def cancel_journal_entry(pdc_cheque_name: str) -> str:
                 frappe.db.set_value("Payment Entry", pe_name, "custom_deposit", "No")
     
     frappe.db.commit()
-    return je_name
+    
+    frappe.msgprint(_("Reverse Journal Entry {0} created successfully. Original JE {1} remains in the system.").format(reverse_je.name, je_name))
+    
+    return reverse_je.name
