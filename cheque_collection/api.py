@@ -111,9 +111,9 @@ def create_journal_entry(payment_entry_name: str, bank_account: str, posting_dat
 
 @frappe.whitelist()
 def cancel_journal_entry(payment_entry_name: str) -> str:
-    """Cancel the Journal Entry linked to this Payment Entry and clear the link.
+    """Create a reverse Journal Entry to undo the original PDC to Bank movement.
 
-    Returns the Journal Entry name affected.
+    Returns the reverse Journal Entry name created.
     """
     if not payment_entry_name:
         frappe.throw("Missing Payment Entry name")
@@ -127,19 +127,42 @@ def cancel_journal_entry(payment_entry_name: str) -> str:
         frappe.throw("No Journal Entry is linked to this Payment Entry")
 
     je_name = doc.custom_journal_entry
-    je = frappe.get_doc("Journal Entry", je_name)
+    original_je = frappe.get_doc("Journal Entry", je_name)
 
-    if je.docstatus == 1:
-        je.cancel()
-    elif je.docstatus == 0:
-        je.delete()
-    # if already cancelled (2) -> nothing to do
+    if original_je.docstatus != 1:
+        frappe.throw(_("The linked Journal Entry {0} is not submitted. Cannot create reverse entry.").format(je_name))
 
-    # Clear link on Payment Entry
+    # Create reverse Journal Entry
+    reverse_je = frappe.new_doc("Journal Entry")
+    reverse_je.voucher_type = "Bank Entry"
+    reverse_je.company = original_je.company
+    reverse_je.posting_date = frappe.utils.today()
+    reverse_je.cheque_no = doc.reference_no
+    reverse_je.cheque_date = doc.reference_date
+    reverse_je.user_remark = _("Reverse Entry for Payment Entry Return {0} - Original JE: {1}").format(doc.name, je_name)
+
+    # Reverse the accounts - swap debit and credit
+    for account_row in original_je.accounts:
+        reverse_je.append(
+            "accounts",
+            {
+                "account": account_row.account,
+                "debit_in_account_currency": account_row.credit_in_account_currency or 0,
+                "credit_in_account_currency": account_row.debit_in_account_currency or 0,
+            },
+        )
+
+    reverse_je.insert()
+    reverse_je.submit()
+
+    # Clear the custom_journal_entry link on Payment Entry (original JE remains in system)
     frappe.db.set_value("Payment Entry", doc.name, "custom_journal_entry", None)
     
     # Set custom_deposit to No
     frappe.db.set_value("Payment Entry", doc.name, "custom_deposit", "No")
     
     frappe.db.commit()
-    return je_name
+    
+    frappe.msgprint(_("Reverse Journal Entry {0} created successfully. Original JE {1} remains in the system.").format(reverse_je.name, je_name))
+    
+    return reverse_je.name
