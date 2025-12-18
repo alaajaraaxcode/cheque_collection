@@ -86,7 +86,7 @@ def execute(filters=None):
 
 			data.append({
 				"date": inv.get("posting_date"),
-				"ref_inv": f"INV:{inv.get('name')}",
+				"ref_inv": f"{inv.get('name')}",
 				"po_no": inv.get("po_no"),
 				"amount": amount,
 				"balance": outstanding,
